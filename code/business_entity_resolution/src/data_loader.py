@@ -1,6 +1,6 @@
 import pandas as pd
 
-from .config import (
+from config import (
     TRAIN_SOURCE1,
     TRAIN_SOURCE2,
     TRAIN_SOURCE3,

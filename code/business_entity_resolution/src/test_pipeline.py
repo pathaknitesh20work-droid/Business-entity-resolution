@@ -1,12 +1,12 @@
-from src.data_loader import load_training_data
-from src.normalization import (
+from data_loader import load_training_data
+from normalization import (
     normalize_name,
     normalize_address,
     normalize_country
 )
-from src.tokenizer import encode_text
-from src.dataset import EntityDataset
-from src.encoder import BusinessEncoder
+from tokenizer import encode_text
+from dataset import BusinessDataset
+from encoder import BusinessEncoder
 
 import torch
 
@@ -63,7 +63,7 @@ print("\n" + "=" * 70)
 print("STEP 4: CHECKING DATASET")
 print("=" * 70)
 
-dataset = EntityDataset(source1)
+dataset =  BusinessDataset(source1)
 
 print("Dataset length:", len(dataset))
 

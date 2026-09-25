@@ -1,13 +1,13 @@
 import torch
 from torch.utils.data import Dataset
 
-from .normalization import (
+from normalization import (
     normalize_name,
     normalize_address,
     normalize_country,
 )
 
-from .tokenizer import encode_text
+from tokenizer import encode_text
 
 
 class BusinessDataset(Dataset):

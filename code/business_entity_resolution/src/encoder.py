@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .tokenizer import VOCAB
+from tokenizer import VOCAB
 
 
 class TextCNN(nn.Module):
