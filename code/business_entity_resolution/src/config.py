@@ -65,3 +65,20 @@ BATCH_SIZE = 128
 EPOCHS_ENCODER = 10
 EPOCHS_MATCHER = 10
 LEARNING_RATE = 1e-3
+
+# ============================================================
+# V1 TRAINING SETTINGS
+# ============================================================
+
+POSITIVE_PAIRS_V1 = 200_000
+NEGATIVE_PAIRS_V1 = 200_000
+
+ENCODER_BATCH_SIZE = 256
+ENCODER_EPOCHS = 3
+ENCODER_LEARNING_RATE = 1e-3
+ENCODER_MARGIN = 0.5
+
+NUM_WORKERS = 0
+
+RETRIEVAL_TOP_K = 100
+FINAL_MATCH_TOP_K = 20
