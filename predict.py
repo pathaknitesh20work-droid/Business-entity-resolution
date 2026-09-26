@@ -12,7 +12,7 @@ def load_model(path):
 
 def predict_matches(model,test_features,threshold):
    # Adds pred_prob and pred)label columns to test)features based on the trained model and tunes threshold.
-    dtest = xgb.DMatrix(test)features[FEATURE_COLUMNS])
+    dtest = xgb.DMatrix(test_features[FEATURE_COLUMNS])
     probs = model.predict(dtest)
 
     result = test_features.copy()
