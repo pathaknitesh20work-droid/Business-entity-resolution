@@ -1,3 +1,5 @@
 /venv
 ./venv
 /__pycache__
+/code/business_entity_resolution/src/venv
+code/business_entity_resolution/src/__pycache__
