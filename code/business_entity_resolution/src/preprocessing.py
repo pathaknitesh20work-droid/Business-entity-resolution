@@ -3,11 +3,10 @@ import pandas as pd
 from normalization import (
     normalize_name,
     normalize_address,
-    normalize_country
+    normalize_country,
 )
 
-
-def normalize_dataframe(df):
+def normalize_dataframe(df): ## HELPER FUNCTION
     """
     Apply the project's standard normalization rules
     to an entity DataFrame.
@@ -78,3 +77,25 @@ def normalize_entity_data(
     source3 = normalize_dataframe(source3)
 
     return source1, source2, source3
+
+def combine_sources(source2, source3):
+    """
+    Concatenate Source 2 and Source 3 records into a single
+    DataFrame for candidate blocking against Source 1.
+
+    Both inputs must already be normalized (i.e. have gone
+    through normalize_dataframe / normalize_entity_data), so
+    the combined frame carries norm_name, norm_address, and
+    norm_country alongside the raw columns.
+
+    entity_id prefixes (S2-/S3-) are preserved as-is, so the
+    origin source of each row remains recoverable without a
+    separate source column.
+    """
+
+    combined = pd.concat(
+        [source2, source3],
+        ignore_index=True
+    )
+
+    return combined

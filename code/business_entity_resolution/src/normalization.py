@@ -1,136 +1,54 @@
-from pathlib import Path
-import pandas as pd
-
-from normalization import (
-    normalize_name,
-    normalize_address,
-    normalize_country
-)
+import re
 
 
-def load_tsv(file_path):
-    """
-    Load a TSV file into a pandas DataFrame.
-    """
+LEGAL_SUFFIXES = [
+    "private limited", "pvt ltd", "pvt", "limited", "ltd",
+    "llc", "llp", "pllc", "inc", "incorporated",
+    "corporation", "corp", "co",
+]
 
-    return pd.read_csv(
-        file_path,
-        sep="\t"
-    )
+ADDRESS_ABBREVIATIONS = {
+    r"\brd\b": "road",
+    r"\bst\b": "street",
+    r"\bave\b": "avenue",
+    r"\bblvd\b": "boulevard",
+    r"\bapt\b": "apartment",
+    r"\bfl\b": "floor",
+    r"\bno\b": "number",
+}
 
-
-def clean_dataset(df):
-    """
-    Clean a business entity dataset.
-
-    Original columns are preserved.
-    Normalized columns are added.
-    """
-
-    df = df.copy()
-
-    # Normalize business name
-    df["business_name_clean"] = (
-        df["business_name"]
-        .apply(normalize_name)
-    )
-
-    # Normalize business address
-    df["business_address_clean"] = (
-        df["business_address"]
-        .apply(normalize_address)
-    )
-
-    # Normalize country
-    df["country_clean"] = (
-        df["country"]
-        .apply(normalize_country)
-    )
-
-    return df
+COUNTRY_ALIASES = {
+    "usa": "us",
+    "u.s.a": "us",
+    "u.s.a.": "us",
+    "united states": "us",
+    "united states of america": "us",
+    "in": "india",
+    "fr": "france",
+}
 
 
-def load_train_data(data_dir):
-    """
-    Load and clean the training datasets.
-
-    Returns:
-        train_source1
-        train_source2
-        train_source3
-        ground_truth
-    """
-
-    data_dir = Path(data_dir)
-
-    train_dir = data_dir / "train"
-
-    # Load training source files
-    train_source1 = load_tsv(
-        train_dir / "train_source1.tsv"
-    )
-
-    train_source2 = load_tsv(
-        train_dir / "train_source2.tsv"
-    )
-
-    train_source3 = load_tsv(
-        train_dir / "train_source3.tsv"
-    )
-
-    # Ground truth contains IDs, not business data.
-    # Therefore, do not apply business normalization to it.
-    ground_truth = load_tsv(
-        train_dir / "train_ground_truth.tsv"
-    )
-
-    # Clean source datasets
-    train_source1 = clean_dataset(train_source1)
-    train_source2 = clean_dataset(train_source2)
-    train_source3 = clean_dataset(train_source3)
-
-    return (
-        train_source1,
-        train_source2,
-        train_source3,
-        ground_truth
-    )
+def _clean_basic(text):
+    text = text.lower()
+    text = re.sub(r"[^\w\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
-def load_test_data(data_dir):
-    """
-    Load and clean the test datasets.
+def normalize_name(name):
+    name = _clean_basic(name)
+    for suf in LEGAL_SUFFIXES:
+        name = re.sub(rf"\b{suf}\b", "", name)
+    return re.sub(r"\s+", " ", name).strip()
 
-    Returns:
-        test_source1
-        test_source2
-        test_source3
-    """
 
-    data_dir = Path(data_dir)
+def normalize_address(address):
+    address = _clean_basic(address)
+    for pattern, replacement in ADDRESS_ABBREVIATIONS.items():
+        address = re.sub(pattern, replacement, address)
+    return re.sub(r"\s+", " ", address).strip()
 
-    test_dir = data_dir / "test"
 
-    # Load test source files
-    test_source1 = load_tsv(
-        test_dir / "test_source1.tsv"
-    )
-
-    test_source2 = load_tsv(
-        test_dir / "test_source2.tsv"
-    )
-
-    test_source3 = load_tsv(
-        test_dir / "test_source3.tsv"
-    )
-
-    # Clean source datasets
-    test_source1 = clean_dataset(test_source1)
-    test_source2 = clean_dataset(test_source2)
-    test_source3 = clean_dataset(test_source3)
-
-    return (
-        test_source1,
-        test_source2,
-        test_source3
-    )
+def normalize_country(country):
+    country = _clean_basic(country)
+    return COUNTRY_ALIASES.get(country, country)

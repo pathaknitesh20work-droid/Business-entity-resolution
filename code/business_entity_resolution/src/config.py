@@ -1,43 +1,20 @@
 from pathlib import Path
+## NOTE : THIS FILE HAS PATHS RELATIVE TO SAMEER'S LOCAL MACHINE, DO NOT USE THIS VERSION OF CONFIG.PY FOR AWS INSTANCE 
 
-
-# ============================================================
-# PROJECT ROOT
-# ============================================================
-
+# src/ -> business_entity_resolution/ -> code/ -> CodeBlooded_submission/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-
-# ============================================================
-# DATA
-# ============================================================
-
-DATA_ROOT = (
-    PROJECT_ROOT.parent
-    / "dataset"
-    / "6ab10eb3b23ba_student_resource"
-    / "student_resource"
-    / "dataset"
-)
+DATA_ROOT = PROJECT_ROOT.parent / "data" / "dataset_sample"   # <- using sample locally
+# DATA_ROOT = PROJECT_ROOT.parent / "data" / "dataset"        # <- switch back for full run
 
 TRAIN_DIR = DATA_ROOT / "train"
 TEST_DIR = DATA_ROOT / "test"
-
-
-# ============================================================
-# OUTPUT / MODELS
-# ============================================================
 
 OUTPUT_DIR = PROJECT_ROOT / "output"
 MODEL_DIR = PROJECT_ROOT / "models"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# ============================================================
-# TRAIN FILES
-# ============================================================
 
 TRAIN_SOURCE1 = TRAIN_DIR / "train_source1.tsv"
 TRAIN_SOURCE2 = TRAIN_DIR / "train_source2.tsv"
@@ -80,5 +57,5 @@ ENCODER_MARGIN = 0.5
 
 NUM_WORKERS = 0
 
-RETRIEVAL_TOP_K = 100
+RETRIEVAL_TOP_K = 10 # Set to 100 for the full real run
 FINAL_MATCH_TOP_K = 20

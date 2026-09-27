@@ -1,11 +1,12 @@
-from data_loader import load_training_data, load_test_data
-from preprocessing import normalize_dataframe
+from data_loader import load_training_data as load_raw_training_data
+from data_loader import load_test_data as load_raw_test_data
+from preprocessing import normalize_entity_data
 
 
-def get_training_data():
-    source1, source2, source3, ground_truth = load_training_data()
+def load_training_data():
+    source1, source2, source3, ground_truth = load_raw_training_data()
 
-    source1, source2, source3 = preprocess_training_data(
+    source1, source2, source3 = normalize_entity_data(
         source1,
         source2,
         source3,
@@ -14,10 +15,10 @@ def get_training_data():
     return source1, source2, source3, ground_truth
 
 
-def get_test_data():
-    source1, source2, source3 = load_test_data()
+def load_test_data():
+    source1, source2, source3 = load_raw_test_data()
 
-    source1, source2, source3 = preprocess_test_data(
+    source1, source2, source3 = normalize_entity_data(
         source1,
         source2,
         source3,

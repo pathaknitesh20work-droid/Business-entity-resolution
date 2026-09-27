@@ -1,457 +1,152 @@
-import re
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.neighbors import NearestNeighbors
 
 
-# =========================================================
-# BLOCKING KEY FUNCTIONS
-# =========================================================
+# ---------------------------------------------------------
+# 1. Build a reusable blocking index over candidate entities
+# ---------------------------------------------------------
 
-def first_name_token(text):
+def build_block_index(candidates, k=20, ngram_range=(2, 4)):
     """
-    Return the first token of the normalized business name.
-    """
-    if not text:
-        return ""
+    Fits a TF-IDF vectorizer + NearestNeighbors index over the
+    normalized names of the candidate pool (Source2 + Source3).
 
-    parts = text.split()
+    `candidates` must already be normalized (has norm_name).
 
-    return parts[0] if parts else ""
-
-
-def first_two_name_tokens(text):
-    """
-    Return the first two tokens of the normalized business name.
-    """
-    if not text:
-        return ""
-
-    parts = text.split()
-
-    return " ".join(parts[:2])
-
-
-def name_prefix(text, length=4):
-    """
-    Return the first `length` characters of the normalized
-    business name after removing spaces.
-    """
-    if not text:
-        return ""
-
-    text = text.replace(" ", "")
-
-    return text[:length]
-
-
-def first_address_tokens(text, count=3):
-    """
-    Return the first `count` tokens of the normalized address.
-    """
-    if not text:
-        return ""
-
-    parts = text.split()
-
-    return " ".join(parts[:count])
-
-
-def address_number(text):
-    """
-    Extract the first number appearing in an address.
-    """
-    if not text:
-        return ""
-
-    match = re.search(r"\d+", text)
-
-    if match:
-        return match.group()
-
-    return ""
-
-
-# =========================================================
-# CREATE BLOCKING COLUMNS
-# =========================================================
-
-def create_blocking_columns(df):
-    """
-    Create all blocking keys using vectorized pandas operations.
-
-    Expected input columns:
-
-        norm_name
-        norm_address
-        norm_country
+    Returns a dict bundling everything needed to query the
+    index later, so it only has to be fit once and reused
+    across many lookups (per-row hard-negative mining, or
+    bulk candidate generation).
     """
 
-    df = df.copy()
-
-    # -----------------------------------------------------
-    # Name keys
-    # -----------------------------------------------------
-
-    df["_block_name1"] = (
-        df["norm_name"]
-        .fillna("")
-        .astype(str)
-        .str.split()
-        .str[0]
-        .fillna("")
+    vectorizer = TfidfVectorizer(
+        analyzer="char_wb",
+        ngram_range=ngram_range,
+        min_df=1,
     )
 
-    df["_block_name2"] = (
-        df["norm_name"]
-        .fillna("")
-        .astype(str)
-        .str.split()
-        .str[:2]
-        .str.join(" ")
+    candidate_matrix = vectorizer.fit_transform(
+        candidates["norm_name"]
     )
 
-    df["_block_prefix"] = (
-        df["norm_name"]
-        .fillna("")
-        .astype(str)
-        .str.replace(" ", "", regex=False)
-        .str[:4]
+    nn_model = NearestNeighbors(
+        n_neighbors=min(k, len(candidates)),
+        metric="cosine",
     )
+    nn_model.fit(candidate_matrix)
 
-    # -----------------------------------------------------
-    # Address keys
-    # -----------------------------------------------------
-
-    df["_block_address3"] = (
-        df["norm_address"]
-        .fillna("")
-        .astype(str)
-        .str.split()
-        .str[:3]
-        .str.join(" ")
-    )
-
-    df["_block_address_number"] = (
-        df["norm_address"]
-        .fillna("")
-        .astype(str)
-        .str.extract(
-            r"(\d+)",
-            expand=False
-        )
-        .fillna("")
-    )
-
-    # -----------------------------------------------------
-    # Country
-    # -----------------------------------------------------
-
-    df["_block_country"] = (
-        df["norm_country"]
-        .fillna("")
-        .astype(str)
-    )
-
-    return df
+    return {
+        "vectorizer": vectorizer,
+        "nn_model": nn_model,
+        "candidates": candidates,
+        "k": k,
+    }
 
 
-# =========================================================
-# BUILD BLOCK INDEX
-# =========================================================
+# ---------------------------------------------------------
+# 2. Query the index for a single Source1 row
+# ---------------------------------------------------------
 
-def build_block_index(candidates):
+def get_block_candidates(source1_row, block_indexes):
     """
-    Build vectorized blocking indexes.
+    Returns the candidate DataFrame positions (iloc indices
+    into block_indexes["candidates"]) nearest to a single
+    Source1 row's normalized name.
 
-    Each index maps:
-
-        blocking_key -> candidate row indices
-
-    Blocking strategies:
-
-        1. country + first 2 name tokens
-        2. country + first name token
-        3. country + name prefix
-        4. country + first 3 address tokens
-        5. country + address number
+    Used by generate_pairs.py for per-row hard-negative
+    mining.
     """
 
-    candidates = create_blocking_columns(candidates)
+    vectorizer = block_indexes["vectorizer"]
+    nn_model = block_indexes["nn_model"]
 
-    indexes = {}
+    query_vec = vectorizer.transform([source1_row["norm_name"]])
 
-    # -----------------------------------------------------
-    # 1. Country + first 2 name tokens
-    # -----------------------------------------------------
+    _, indices = nn_model.kneighbors(query_vec)
 
-    temp = candidates[
-        (candidates["_block_country"] != "")
-        & (candidates["_block_name2"] != "")
-    ].copy()
-
-    temp["_key"] = (
-        temp["_block_country"]
-        + "|"
-        + temp["_block_name2"]
-    )
-
-    indexes["country_name2"] = (
-        temp.groupby("_key", sort=False)
-        .apply(
-            lambda x: x.index.tolist(),
-            include_groups=False
-        )
-        .to_dict()
-    )
-
-    # -----------------------------------------------------
-    # 2. Country + first name token
-    # -----------------------------------------------------
-
-    temp = candidates[
-        (candidates["_block_country"] != "")
-        & (candidates["_block_name1"] != "")
-    ].copy()
-
-    temp["_key"] = (
-        temp["_block_country"]
-        + "|"
-        + temp["_block_name1"]
-    )
-
-    indexes["country_name1"] = (
-        temp.groupby("_key", sort=False)
-        .apply(
-            lambda x: x.index.tolist(),
-            include_groups=False
-        )
-        .to_dict()
-    )
-
-    # -----------------------------------------------------
-    # 3. Country + name prefix
-    # -----------------------------------------------------
-
-    temp = candidates[
-        (candidates["_block_country"] != "")
-        & (candidates["_block_prefix"] != "")
-    ].copy()
-
-    temp["_key"] = (
-        temp["_block_country"]
-        + "|"
-        + temp["_block_prefix"]
-    )
-
-    indexes["country_prefix"] = (
-        temp.groupby("_key", sort=False)
-        .apply(
-            lambda x: x.index.tolist(),
-            include_groups=False
-        )
-        .to_dict()
-    )
-
-    # -----------------------------------------------------
-    # 4. Country + first 3 address tokens
-    # -----------------------------------------------------
-
-    temp = candidates[
-        (candidates["_block_country"] != "")
-        & (candidates["_block_address3"] != "")
-    ].copy()
-
-    temp["_key"] = (
-        temp["_block_country"]
-        + "|"
-        + temp["_block_address3"]
-    )
-
-    indexes["country_address3"] = (
-        temp.groupby("_key", sort=False)
-        .apply(
-            lambda x: x.index.tolist(),
-            include_groups=False
-        )
-        .to_dict()
-    )
-
-    # -----------------------------------------------------
-    # 5. Country + address number
-    # -----------------------------------------------------
-
-    temp = candidates[
-        (candidates["_block_country"] != "")
-        & (candidates["_block_address_number"] != "")
-    ].copy()
-
-    temp["_key"] = (
-        temp["_block_country"]
-        + "|"
-        + temp["_block_address_number"]
-    )
-
-    indexes["country_address_number"] = (
-        temp.groupby("_key", sort=False)
-        .apply(
-            lambda x: x.index.tolist(),
-            include_groups=False
-        )
-        .to_dict()
-    )
-
-    return indexes
+    return indices[0].tolist()
 
 
-# =========================================================
-# GET CANDIDATES FOR ONE SOURCE-1 ENTITY
-# =========================================================
+# ---------------------------------------------------------
+# 3. Bulk candidate generation for candidate_pairs.tsv
+# ---------------------------------------------------------
 
-def get_block_candidates(source_row, indexes):
+def generate_candidates(source1_df, s2s3_df, k=20):
     """
-    Return the union of candidates produced by all blocking
-    strategies for one Source-1 entity.
+    Generates the candidate set for every Source1 entity in
+    one bulk pass (much faster than calling get_block_candidates
+    row-by-row for the full dataset).
+
+    Both inputs must already be normalized (norm_name present).
+
+    Returns a DataFrame with:
+        source1_entity_id
+        candidate_entity_ids   (list of S2-/S3- entity_id strings)
+
+    This is the direct source for candidate_pairs.tsv, and the
+    input to feature building / the matching model.
     """
 
-    country = str(
-        source_row.get("norm_country", "")
-    ).strip()
+    block_indexes = build_block_index(s2s3_df, k=k)
 
-    name = str(
-        source_row.get("norm_name", "")
-    ).strip()
+    vectorizer = block_indexes["vectorizer"]
+    nn_model = block_indexes["nn_model"]
 
-    address = str(
-        source_row.get("norm_address", "")
-    ).strip()
+    query_matrix = vectorizer.transform(source1_df["norm_name"])
 
-    if not country:
-        return set()
+    _, indices = nn_model.kneighbors(query_matrix)
 
-    # -----------------------------------------------------
-    # Build Source-1 blocking keys
-    # -----------------------------------------------------
+    rows = []
 
-    name_parts = name.split()
+    for row_position, source1_row in enumerate(
+        source1_df.itertuples(index=False)
+    ):
+        candidate_positions = indices[row_position]
 
-    name1 = (
-        name_parts[0]
-        if name_parts
-        else ""
-    )
+        candidate_ids = s2s3_df.iloc[
+            candidate_positions
+        ]["entity_id"].tolist()
 
-    name2 = " ".join(
-        name_parts[:2]
-    )
-
-    prefix = (
-        name.replace(" ", "")[:4]
-        if name
-        else ""
-    )
-
-    address_parts = address.split()
-
-    address3 = " ".join(
-        address_parts[:3]
-    )
-
-    number_match = re.search(
-        r"\d+",
-        address
-    )
-
-    address_num = (
-        number_match.group()
-        if number_match
-        else ""
-    )
-
-    # -----------------------------------------------------
-    # Collect candidates
-    # -----------------------------------------------------
-
-    candidate_indices = set()
-
-    # Country + first 2 name tokens
-    if name2:
-
-        key = (
-            country
-            + "|"
-            + name2
+        rows.append(
+            {
+                "source1_entity_id": source1_row.entity_id,
+                "candidate_entity_ids": candidate_ids,
+            }
         )
 
-        candidate_indices.update(
-            indexes["country_name2"].get(
-                key,
-                []
+    return pd.DataFrame(rows)
+
+def flatten_candidates(candidates_df):
+    """
+    Converts a candidates DataFrame from:
+
+        source1_entity_id | candidate_entity_ids (list)
+
+    into one row per (source1_entity_id, candidate_entity_id)
+    pair — the shape feature building and model
+    inference need.
+
+    Rows with an empty candidate list are dropped, since
+    there's nothing to featurize for them (they'll surface
+    later as singletons if the model predicts no matches).
+    """
+
+    rows = []
+
+    for _, row in candidates_df.iterrows():
+        source1_id = row["source1_entity_id"]
+        candidate_ids = row["candidate_entity_ids"]
+
+        for candidate_id in candidate_ids:
+            rows.append(
+                {
+                    "source1_entity_id": source1_id,
+                    "candidate_entity_id": candidate_id,
+                }
             )
-        )
 
-    # Country + first name token
-    if name1:
-
-        key = (
-            country
-            + "|"
-            + name1
-        )
-
-        candidate_indices.update(
-            indexes["country_name1"].get(
-                key,
-                []
-            )
-        )
-
-    # Country + name prefix
-    if prefix:
-
-        key = (
-            country
-            + "|"
-            + prefix
-        )
-
-        candidate_indices.update(
-            indexes["country_prefix"].get(
-                key,
-                []
-            )
-        )
-
-    # Country + first 3 address tokens
-    if address3:
-
-        key = (
-            country
-            + "|"
-            + address3
-        )
-
-        candidate_indices.update(
-            indexes["country_address3"].get(
-                key,
-                []
-            )
-        )
-
-    # Country + address number
-    if address_num:
-
-        key = (
-            country
-            + "|"
-            + address_num
-        )
-
-        candidate_indices.update(
-            indexes[
-                "country_address_number"
-            ].get(
-                key,
-                []
-            )
-        )
-
-    return candidate_indices
+    return pd.DataFrame(
+        rows,
+        columns=["source1_entity_id", "candidate_entity_id"],
+    )
